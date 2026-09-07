@@ -1,0 +1,86 @@
+# Akamai SIEM -> Coralogix deployment (Docker Compose).
+#
+# One long-running service: pull Akamai SIEM events in DataStream format, then
+# send newly written NDJSON lines directly to Coralogix /logs/v1/singles.
+# Native `send` keeps each line in the Coralogix `text` field so the Akamai WAF
+# extension can parse it — no OpenTelemetry collector needed.
+#
+# Credentials are NEVER in this file or in the image. .edgerc and the Coralogix
+# key JSON are supplied as read-only Docker secrets via paths in your .env.
+# State and output live in host bind mounts so restart/upgrade is lossless.
+#
+#   cp .env.example .env      # edit the values
+#   docker compose --env-file .env up -d --build
+#
+# Set every required value in .env. The `:?` substitutions fail startup if a
+# required value is missing — no silent defaults for tenant-specific settings.
+name: akamai-siem
+
+services:
+  akamai-siem:
+    # The prebuilt binary is linux/amd64.
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: akamai-siem:local
+    restart: unless-stopped
+    environment:
+      AKAMAI_CONFIG_ID: ${AKAMAI_CONFIG_ID:?set AKAMAI_CONFIG_ID}
+      AKAMAI_SECTION: ${AKAMAI_SECTION:-siem}
+      CORALOGIX_DOMAIN: ${CORALOGIX_DOMAIN:?set CORALOGIX_DOMAIN}
+      CORALOGIX_APPLICATION: ${CORALOGIX_APPLICATION:?set CORALOGIX_APPLICATION}
+      CORALOGIX_SUBSYSTEM: ${CORALOGIX_SUBSYSTEM:?set CORALOGIX_SUBSYSTEM}
+      POLL_INTERVAL: ${POLL_INTERVAL:-600}
+      RETRY_DELAY: ${RETRY_DELAY:-30}
+      SEND_BATCH_SIZE: ${SEND_BATCH_SIZE:-100}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          if ! /usr/local/bin/akamai-siem pull \
+              --config-id "${AKAMAI_CONFIG_ID}" \
+              --edgerc /run/secrets/edgerc \
+              --section "${AKAMAI_SECTION}" \
+              --state /var/lib/akamai/state/offset.json \
+              --out /var/lib/akamai/out \
+              --emit-datastream; then
+            echo "pull failed; retrying in ${RETRY_DELAY}s"
+            sleep "${RETRY_DELAY}"
+            continue
+          fi
+          if ! /usr/local/bin/akamai-siem send \
+              --input /var/lib/akamai/out \
+              --key-file /run/secrets/coralogix_key \
+              --domain "${CORALOGIX_DOMAIN}" \
+              --application "${CORALOGIX_APPLICATION}" \
+              --subsystem "${CORALOGIX_SUBSYSTEM}" \
+              --state /var/lib/akamai/send-state/send.json \
+              --batch-size "${SEND_BATCH_SIZE}"; then
+            echo "send failed; retrying in ${RETRY_DELAY}s"
+            sleep "${RETRY_DELAY}"
+            continue
+          fi
+          date -u +%FT%TZ > /var/lib/akamai/send-state/last-ok
+          echo "cycle ok; sleeping ${POLL_INTERVAL}s"
+          sleep "${POLL_INTERVAL}"
+        done
+    volumes:
+      - ./runtime/state:/var/lib/akamai/state
+      - ./runtime/send-state:/var/lib/akamai/send-state
+      - ./runtime/out:/var/lib/akamai/out
+    secrets:
+      - edgerc
+      - coralogix_key
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1 2>/dev/null && test -d /var/lib/akamai/out"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+secrets:
+  edgerc:
+    file: ${AKAMAI_EDGERC_FILE:?set AKAMAI_EDGERC_FILE to the host .edgerc path}
+  coralogix_key:
+    file: ${CORALOGIX_KEY_FILE:?set CORALOGIX_KEY_FILE to the host Coralogix key JSON path}

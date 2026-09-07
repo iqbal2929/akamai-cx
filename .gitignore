@@ -1,0 +1,14 @@
+# Secrets — never commit
+.env
+.env.*
+.edgerc
+.edgerc.*
+*.json
+
+# Runtime state and event data
+runtime/
+out/
+*.ndjson
+offset.json
+send.json
+

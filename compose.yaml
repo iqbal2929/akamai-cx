@@ -14,6 +14,7 @@
 #
 # Set every required value in .env. The `:?` substitutions fail startup if a
 # required value is missing — no silent defaults for tenant-specific settings.
+# Intended live target for this deployment: application akamai, subsystem 75581.
 name: akamai-siem
 
 services:

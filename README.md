@@ -132,7 +132,7 @@ Compose itself does not use the `cx` CLI. To confirm records are visible, query
 with a `cx` profile authenticated to the same tenant/region:
 
 ```sh
-cx logs "source logs | filter \$l.applicationname == '<application>' | filter \$l.subsystemname == '<subsystem>' | limit 10" \
+cx logs "source logs | filter \$l.applicationname == 'akamai' | filter \$l.subsystemname == '75581' | limit 10" \
   --start now-30m --end now --tier frequent -o json --read-only
 ```
 

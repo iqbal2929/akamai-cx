@@ -25,6 +25,8 @@ services:
       dockerfile: Dockerfile
     image: akamai-siem:local
     restart: unless-stopped
+    cpus: "0.50"
+    mem_limit: 256m
     environment:
       AKAMAI_CONFIG_ID: ${AKAMAI_CONFIG_ID:?set AKAMAI_CONFIG_ID}
       AKAMAI_SECTION: ${AKAMAI_SECTION:-siem}
@@ -39,31 +41,31 @@ services:
       - |
         while true; do
           if ! /usr/local/bin/akamai-siem pull \
-              --config-id "${AKAMAI_CONFIG_ID}" \
+              --config-id "$${AKAMAI_CONFIG_ID}" \
               --edgerc /run/secrets/edgerc \
-              --section "${AKAMAI_SECTION}" \
+              --section "$${AKAMAI_SECTION}" \
               --state /var/lib/akamai/state/offset.json \
               --out /var/lib/akamai/out \
               --emit-datastream; then
-            echo "pull failed; retrying in ${RETRY_DELAY}s"
-            sleep "${RETRY_DELAY}"
+            echo "pull failed; retrying in $${RETRY_DELAY}s"
+            sleep "$${RETRY_DELAY}"
             continue
           fi
           if ! /usr/local/bin/akamai-siem send \
               --input /var/lib/akamai/out \
               --key-file /run/secrets/coralogix_key \
-              --domain "${CORALOGIX_DOMAIN}" \
-              --application "${CORALOGIX_APPLICATION}" \
-              --subsystem "${CORALOGIX_SUBSYSTEM}" \
+              --domain "$${CORALOGIX_DOMAIN}" \
+              --application "$${CORALOGIX_APPLICATION}" \
+              --subsystem "$${CORALOGIX_SUBSYSTEM}" \
               --state /var/lib/akamai/send-state/send.json \
-              --batch-size "${SEND_BATCH_SIZE}"; then
-            echo "send failed; retrying in ${RETRY_DELAY}s"
-            sleep "${RETRY_DELAY}"
+              --batch-size "$${SEND_BATCH_SIZE}"; then
+            echo "send failed; retrying in $${RETRY_DELAY}s"
+            sleep "$${RETRY_DELAY}"
             continue
           fi
           date -u +%FT%TZ > /var/lib/akamai/send-state/last-ok
-          echo "cycle ok; sleeping ${POLL_INTERVAL}s"
-          sleep "${POLL_INTERVAL}"
+          echo "cycle ok; sleeping $${POLL_INTERVAL}s"
+          sleep "$${POLL_INTERVAL}"
         done
     volumes:
       - ./runtime/state:/var/lib/akamai/state

@@ -1,0 +1,16 @@
+# Never let credentials, secrets, state, or event data into the build context.
+.edgerc
+.edgerc.*
+.env
+.env.*
+*.env
+*.json
+*.ndjson
+config.env
+runtime/
+.state/
+out/
+.git/
+*.docx
+*.md
+SHA256SUMS
